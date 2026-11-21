@@ -83,7 +83,36 @@
             <button id="btn-demo" class="btn btn-ghost" type="button">
               ✨ Testar com Cupom Exemplo
             </button>
+            <button id="btn-toggle-paste" class="btn btn-ghost" type="button">
+              📋 Colar texto da nota
+            </button>
           </div>
+        </div>
+
+        <div id="captcha-fallback" class="card fallback-card hidden">
+          <h2 class="card-title">SEFAZ pediu CAPTCHA?</h2>
+          <p class="muted fallback-desc">
+            1. Abra o cupom no navegador e resolva o CAPTCHA.<br>
+            2. Selecione tudo na página da nota e copie.<br>
+            3. Cole o texto abaixo para listar os produtos aqui:
+          </p>
+          <a
+            id="btn-open-sefaz"
+            href="#"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="btn btn-secondary btn-full hidden"
+          >
+            Abrir cupom na SEFAZ ↗
+          </a>
+          <textarea
+            id="paste-receipt-input"
+            rows="5"
+            placeholder="Cole aqui o texto copiado da página da SEFAZ..."
+          ></textarea>
+          <button id="btn-parse-pasted" class="btn btn-primary btn-full" type="button">
+            Extrair Produtos
+          </button>
         </div>
       </section>
 

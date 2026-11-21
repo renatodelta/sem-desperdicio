@@ -10,6 +10,11 @@
     manualUrlForm: document.getElementById('manual-url-form'),
     manualUrlInput: document.getElementById('manual-url-input'),
     btnDemo: document.getElementById('btn-demo'),
+    btnTogglePaste: document.getElementById('btn-toggle-paste'),
+    captchaFallback: document.getElementById('captcha-fallback'),
+    btnOpenSefaz: document.getElementById('btn-open-sefaz'),
+    pasteReceiptInput: document.getElementById('paste-receipt-input'),
+    btnParsePasted: document.getElementById('btn-parse-pasted'),
     btnGoScan: document.getElementById('btn-go-scan'),
     emptyProducts: document.getElementById('empty-products'),
     receiptView: document.getElementById('receipt-view'),
@@ -36,6 +41,7 @@
   let isCameraRunning = false;
   let isFetching = false;
   let hasScannedCurrentSession = false;
+  let lastScannedUrl = '';
   let currentReceipt = null;
 
   // Warn if running on non-localhost HTTP (mobile browsers block camera access without HTTPS)
@@ -272,6 +278,8 @@
     }
 
     isFetching = true;
+    lastScannedUrl = url;
+    els.captchaFallback.classList.add('hidden');
     els.scanProgress.classList.remove('hidden');
     setStep(els.stepQr, 'done', 'QR Code lido!');
     setStep(els.stepSefaz, 'active', 'Consultando a NFC-e no site da SEFAZ...');
@@ -288,8 +296,9 @@
       const result = await response.json();
 
       if (!response.ok || !result.success) {
-        setStep(els.stepSefaz, 'error', 'Falha ao consultar a SEFAZ.');
+        setStep(els.stepSefaz, 'error', 'SEFAZ pediu CAPTCHA ou bloqueou a consulta.');
         showStatus(result.error || 'Falha ao ler os produtos deste cupom.', 'error');
+        showCaptchaFallback(url);
         return;
       }
 
@@ -489,6 +498,174 @@
     showStatus('Cupom de exemplo carregado!', 'success');
     switchTab('products');
   });
+
+  // CAPTCHA / Manual Paste Fallback
+  function showCaptchaFallback(url = '') {
+    els.captchaFallback.classList.remove('hidden');
+    if (url && /^https?:\/\//i.test(url)) {
+      els.btnOpenSefaz.href = url;
+      els.btnOpenSefaz.classList.remove('hidden');
+    } else {
+      els.btnOpenSefaz.classList.add('hidden');
+    }
+    els.captchaFallback.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  els.btnTogglePaste.addEventListener('click', () => {
+    const isHidden = els.captchaFallback.classList.contains('hidden');
+    if (isHidden) {
+      showCaptchaFallback(lastScannedUrl);
+    } else {
+      els.captchaFallback.classList.add('hidden');
+    }
+  });
+
+  els.btnParsePasted.addEventListener('click', () => {
+    const raw = els.pasteReceiptInput.value.trim();
+    if (!raw) {
+      showStatus('Cole o texto copiado da página da SEFAZ antes de extrair.', 'error');
+      return;
+    }
+
+    const receipt = parsePastedReceiptText(raw, lastScannedUrl);
+    if (!receipt.itens.length) {
+      showStatus(
+        'Não foi possível identificar produtos no texto colado. Certifique-se de copiar a página inteira da nota.',
+        'error'
+      );
+      return;
+    }
+
+    saveToHistory(receipt);
+    renderReceipt(receipt);
+    els.pasteReceiptInput.value = '';
+    els.captchaFallback.classList.add('hidden');
+    showStatus(`Concluído! ${receipt.itens.length} produto(s) extraído(s) do texto.`, 'success');
+    switchTab('products');
+  });
+
+  function parseBrNumStr(str) {
+    const cleaned = String(str || '').replace(/[^\d,.\-]/g, '');
+    if (!cleaned) return 0;
+    if (cleaned.includes(',')) {
+      return parseFloat(cleaned.replace(/\./g, '').replace(',', '.')) || 0;
+    }
+    return parseFloat(cleaned) || 0;
+  }
+
+  function parsePastedReceiptText(rawText, sourceUrl = '') {
+    const lines = rawText
+      .split(/\r?\n/)
+      .map((l) => l.replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
+
+    const itens = [];
+
+    // Strategy 1: Standard NFC-e copied text ("Qtde.: X UN: Y Vl. Unit.: Z")
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const qtdMatch = line.match(/Qtde\.?\s*:?\s*([\d.,]+)/i);
+      const vlUnitMatch = line.match(/Vl\.?\s*Unit\.?\s*:?\s*([\d.,]+)/i);
+
+      if (qtdMatch && (vlUnitMatch || /UN\s*:/i.test(line))) {
+        let nameLine = i > 0 ? lines[i - 1] : '';
+        if (!nameLine || /^(Qtde|Vl\.|Valor|Código)/i.test(nameLine)) continue;
+
+        const codMatch = nameLine.match(/\(?\s*C[oó]digo\s*:?\s*(\d+)\s*\)?/i);
+        const codigo = codMatch ? codMatch[1] : '';
+        const nome = nameLine.replace(/\(?\s*C[oó]digo\s*:?\s*\d+\s*\)?/i, '').trim();
+        if (!nome) continue;
+
+        const quantidade = parseBrNumStr(qtdMatch[1]) || 1;
+        const unMatch = line.match(/UN\s*:?\s*([A-Za-z0-9]{1,6})/i);
+        const unidade = unMatch ? unMatch[1].toUpperCase() : 'UN';
+        let valorUnitario = vlUnitMatch ? parseBrNumStr(vlUnitMatch[1]) : 0;
+
+        // Total may be on the same line or on the next 1-2 lines (e.g. after "Vl. Total")
+        let valorTotal = 0;
+        const sameLineTotal = line.match(/Vl\.?\s*Total\s*:?\s*([\d.,]+)/i);
+        if (sameLineTotal) {
+          valorTotal = parseBrNumStr(sameLineTotal[1]);
+        } else {
+          for (let j = i + 1; j <= Math.min(i + 2, lines.length - 1); j++) {
+            if (/^Vl\.?\s*Total$/i.test(lines[j])) continue;
+            const m = lines[j].match(/^(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})$/);
+            if (m) {
+              valorTotal = parseBrNumStr(m[1]);
+              break;
+            }
+          }
+        }
+
+        if (valorTotal <= 0 && valorUnitario > 0) {
+          valorTotal = Math.round(valorUnitario * quantidade * 100) / 100;
+        }
+        if (valorUnitario <= 0 && valorTotal > 0 && quantidade > 0) {
+          valorUnitario = Math.round((valorTotal / quantidade) * 100) / 100;
+        }
+
+        itens.push({
+          nome,
+          codigo,
+          quantidade,
+          unidade,
+          valorUnitario: Math.round(valorUnitario * 100) / 100,
+          valorTotal: Math.round(valorTotal * 100) / 100,
+        });
+      }
+    }
+
+    // Strategy 2: SAT-SP / tabular lines ("001 789... PRODUTO 1,000 UN 12,50 12,50")
+    if (!itens.length) {
+      const satRegex = /^(?:\d{1,4}\s+)?(?:\d{6,14}\s+)?(.+?)\s+(\d+(?:,\d+)?)\s+([A-Za-z]{1,5})\s+(?:[xX]\s+)?(\d{1,3}(?:\.\d{3})*,\d{2})\s+(?:=\s+)?(\d{1,3}(?:\.\d{3})*,\d{2})$/;
+      for (const line of lines) {
+        if (/^(item|c[oó]digo|descri[cç][aã]o|qtd|total|troco|valor)/i.test(line)) continue;
+        const m = line.match(satRegex);
+        if (m) {
+          const nome = m[1].trim();
+          if (nome.length < 2) continue;
+          const quantidade = parseBrNumStr(m[2]) || 1;
+          const unidade = m[3].toUpperCase();
+          const valorUnitario = parseBrNumStr(m[4]);
+          const valorTotal = parseBrNumStr(m[5]);
+          itens.push({ nome, codigo: '', quantidade, unidade, valorUnitario, valorTotal });
+        }
+      }
+    }
+
+    const cnpjMatch = rawText.match(/CNPJ\s*:?\s*([\d.\-\/]{14,18})/i);
+    const dataMatch = rawText.match(/(\d{2}\/\d{2}\/\d{4}(?:\s+\d{2}:\d{2}(?::\d{2})?)?)/);
+    const qtdTotalMatch = rawText.match(/Qtd\.?\s*total\s*(?:de\s*)?itens\s*:?\s*(\d+)/i);
+    const totalMatch =
+      rawText.match(/Valor\s+a\s+pagar\s*R?\$?\s*:?\s*(\d{1,3}(?:\.\d{3})*,\d{2})/i) ||
+      rawText.match(/Valor\s+total\s*R?\$?\s*:?\s*(\d{1,3}(?:\.\d{3})*,\d{2})/i);
+
+    const somaItens = itens.reduce((acc, item) => acc + item.valorTotal, 0);
+    const valorTotal = totalMatch ? parseBrNumStr(totalMatch[1]) : somaItens;
+
+    let estabelecimento = 'Supermercado / Estabelecimento';
+    for (const line of lines.slice(0, 8)) {
+      if (
+        line.length >= 4 &&
+        !/^(DOCUMENTO|DANFE|NFC-?e|CNPJ|Chave|Consulta|https?:)/i.test(line) &&
+        !/^\d+$/.test(line)
+      ) {
+        estabelecimento = line;
+        break;
+      }
+    }
+
+    return {
+      estabelecimento,
+      cnpj: cnpjMatch ? cnpjMatch[1].trim() : '',
+      data: dataMatch ? dataMatch[1].trim() : '',
+      valorTotal: Math.round(valorTotal * 100) / 100,
+      somaItens: Math.round(somaItens * 100) / 100,
+      qtdItensInformada: qtdTotalMatch ? parseInt(qtdTotalMatch[1], 10) : null,
+      url: sourceUrl,
+      itens,
+    };
+  }
 
   // Helpers
   function formatBrl(value) {
