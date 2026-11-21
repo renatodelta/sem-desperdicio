@@ -137,20 +137,29 @@
     hasScannedCurrentSession = false;
 
     if (!html5QrCode) {
+      const qrFormats =
+        typeof Html5QrcodeSupportedFormats !== 'undefined'
+          ? [Html5QrcodeSupportedFormats.QR_CODE]
+          : undefined;
       html5QrCode = new Html5Qrcode('qr-reader', {
+        formatsToSupport: qrFormats,
         experimentalFeatures: { useBarCodeDetectorIfSupported: true },
         verbose: false,
       });
     }
 
     const scannerConfig = {
-      fps: 20,
+      fps: 24,
       qrbox: (viewfinderWidth, viewfinderHeight) => {
         const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
         const size = Math.max(180, Math.floor(minEdge * 0.72));
         return { width: size, height: size };
       },
-      aspectRatio: 1.0,
+      videoConstraints: {
+        facingMode: 'environment',
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+      },
     };
 
     try {
