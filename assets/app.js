@@ -312,7 +312,8 @@
       switchTab('products');
     } catch {
       setStep(els.stepSefaz, 'error', 'Erro de conexão com o servidor.');
-      showStatus('Erro de conexão com o servidor local (PHP).', 'error');
+      showStatus('Erro de conexão com o servidor. Você pode abrir o cupom no navegador abaixo.', 'error');
+      showCaptchaFallback(url);
     } finally {
       isFetching = false;
     }
