@@ -1,0 +1,10 @@
+{
+  "name": "Sem Desperdício - Leitor de Cupom Fiscal",
+  "short_name": "Sem Desperdício",
+  "description": "Leia o QR Code do cupom fiscal (NFC-e) e liste os produtos comprados no celular.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#10b981",
+  "orientation": "portrait"
+}

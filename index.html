@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#10b981">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Sem Desperdício • Leitor de Cupom</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="app-header">
+      <div class="brand">
+        <span class="brand-icon" aria-hidden="true">🧾</span>
+        <div>
+          <h1>Sem Desperdício</h1>
+          <p class="subtitle">Leitor de Cupom Fiscal (NFC-e)</p>
+        </div>
+      </div>
+    </header>
+
+    <main class="app-main">
+      <!-- Status / Toast -->
+      <div id="status-banner" class="status-banner hidden" role="alert"></div>
+
+      <!-- TAB: ESCANEAR -->
+      <section id="tab-scan" class="tab-panel active">
+        <div id="https-warning" class="info-card warning hidden">
+          <strong>Atenção:</strong> A câmera ao vivo exige <code>HTTPS</code> ou <code>localhost</code>. Se você abriu pelo IP da rede local em HTTP, use o botão <strong>Ler QR de uma Foto</strong> abaixo.
+        </div>
+
+        <div class="card scanner-card">
+          <div id="qr-reader" class="qr-reader-box">
+            <div class="qr-placeholder">
+              <span>📷</span>
+              <p>Aponte a câmera para o QR Code do cupom fiscal</p>
+            </div>
+          </div>
+
+          <div id="scan-progress" class="scan-progress hidden" aria-live="polite">
+            <div class="progress-step" id="step-qr">
+              <span class="step-icon">⏳</span>
+              <span class="step-text">Lendo QR Code...</span>
+            </div>
+            <div class="progress-step" id="step-sefaz">
+              <span class="step-icon">⏳</span>
+              <span class="step-text">Consultando a NFC-e no site da SEFAZ...</span>
+            </div>
+            <div class="progress-step" id="step-done">
+              <span class="step-icon">⏳</span>
+              <span class="step-text">Finalizando lista de produtos...</span>
+            </div>
+          </div>
+
+          <div class="scanner-actions">
+            <button id="btn-toggle-camera" class="btn btn-primary" type="button">
+              Abrir Câmera
+            </button>
+            <label class="btn btn-secondary file-btn" for="qr-file-input">
+              Ler QR de uma Foto
+              <input id="qr-file-input" type="file" accept="image/*" capture="environment" hidden>
+            </label>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2 class="card-title">Ou cole o link do cupom</h2>
+          <form id="manual-url-form" class="url-form">
+            <input
+              id="manual-url-input"
+              type="url"
+              placeholder="https://www.nfce.fazenda..."
+              autocomplete="off"
+              required
+            >
+            <button class="btn btn-primary" type="submit">Consultar</button>
+          </form>
+
+          <div class="demo-row">
+            <button id="btn-demo" class="btn btn-ghost" type="button">
+              ✨ Testar com Cupom Exemplo
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB: PRODUTOS -->
+      <section id="tab-products" class="tab-panel">
+        <div id="empty-products" class="card empty-state">
+          <span>🛒</span>
+          <h2>Nenhum cupom carregado</h2>
+          <p>Escaneie um QR Code na aba <strong>Escanear</strong> ou teste com o cupom de exemplo.</p>
+          <button id="btn-go-scan" class="btn btn-primary" type="button">Ir para Scanner</button>
+        </div>
+
+        <div id="receipt-view" class="hidden">
+          <div class="card receipt-summary">
+            <div class="receipt-top">
+              <div>
+                <h2 id="receipt-store">Supermercado</h2>
+                <p id="receipt-meta" class="muted"></p>
+              </div>
+              <div class="receipt-total-box">
+                <span class="total-label">Total</span>
+                <strong id="receipt-total">R$ 0,00</strong>
+              </div>
+            </div>
+            <div class="receipt-stats">
+              <span id="receipt-count" class="badge">0 itens</span>
+              <a id="receipt-source-link" href="#" target="_blank" rel="noopener noreferrer" class="source-link">
+                Ver na SEFAZ ↗
+              </a>
+            </div>
+            <div id="receipt-warning" class="info-card warning hidden"></div>
+          </div>
+
+          <div class="search-bar">
+            <input
+              id="product-search"
+              type="search"
+              placeholder="Buscar produto na lista..."
+              autocomplete="off"
+            >
+          </div>
+
+          <ul id="product-list" class="product-list"></ul>
+        </div>
+      </section>
+
+      <!-- TAB: HISTÓRICO -->
+      <section id="tab-history" class="tab-panel">
+        <div class="history-header">
+          <h2>Cupons Salvos</h2>
+          <button id="btn-clear-history" class="btn btn-ghost btn-sm hidden" type="button">
+            Limpar tudo
+          </button>
+        </div>
+        <div id="history-empty" class="card empty-state">
+          <span>📂</span>
+          <p>Os cupons que você escanear aparecerão aqui.</p>
+        </div>
+        <ul id="history-list" class="history-list"></ul>
+      </section>
+    </main>
+
+    <nav class="bottom-nav" aria-label="Navegação principal">
+      <button class="nav-btn active" data-tab="scan" type="button">
+        <span class="nav-icon">📷</span>
+        <span>Escanear</span>
+      </button>
+      <button class="nav-btn" data-tab="products" type="button">
+        <span class="nav-icon">🛒</span>
+        <span>Produtos</span>
+      </button>
+      <button class="nav-btn" data-tab="history" type="button">
+        <span class="nav-icon">📂</span>
+        <span>Histórico</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- Hidden element for file QR scanning -->
+  <div id="qr-file-reader" hidden></div>
+
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="assets/app.js"></script>
+</body>
+</html>
